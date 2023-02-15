@@ -5,13 +5,13 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Threading.Tasks;
-
 using Hangfire.Common;
 using Hangfire.Dashboard.Management.v2.Metadata;
 using Hangfire.Dashboard.Management.v2.Support;
 using Hangfire.Dashboard.Pages;
 using Hangfire.Server;
 using Hangfire.States;
+using Hangfire.Storage;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -34,17 +34,19 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 
 			foreach (var jobMetadata in jobs)
 			{
-
 				var route = $"{ManagementPage.UrlRoute}/{jobMetadata.JobId.ScrubURL()}";
 
-				DashboardRoutes.Routes.Add(route, new CommandWithResponseDispatcher(context => {
+				DashboardRoutes.Routes.Add(route, new CommandWithResponseDispatcher(context =>
+				{
 					string errorMessage = null;
 					string jobLink = null;
 					var par = new List<object>();
+
 					string GetFormVariable(string key)
 					{
 						return Task.Run(() => context.Request.GetFormValuesAsync(key)).Result.FirstOrDefault();
 					}
+
 					var id = GetFormVariable("id");
 					var type = GetFormVariable("type");
 
@@ -93,6 +95,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 								errorMessage = $"{parameterInfo.Name} was not in a correct format.";
 								break;
 							}
+
 							item = intNumber;
 						}
 						else if (parameterInfo.ParameterType == typeof(DateTime))
@@ -155,6 +158,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 										errorMessage = "No Cron Expression Defined";
 										break;
 									}
+
 									if (jobMetadata.AllowMultiple && string.IsNullOrWhiteSpace(name))
 									{
 										errorMessage = "No Job Name Defined";
@@ -171,6 +175,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 									{
 										errorMessage = e.Message;
 									}
+
 									break;
 								}
 							case "ScheduleDateTime":
@@ -188,15 +193,17 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 										errorMessage = "Unable to parse Schedule";
 										break;
 									}
+
 									try
 									{
-										var jobId = client.Create(job, new ScheduledState(dt.ToLocalTime()));//Queue
+										var jobId = client.Create(job, new ScheduledState(dt.ToLocalTime())); //Queue
 										jobLink = new UrlHelper(context).JobDetails(jobId);
 									}
 									catch (Exception e)
 									{
 										errorMessage = e.Message;
 									}
+
 									break;
 								}
 							case "ScheduleTimeSpan":
@@ -218,13 +225,14 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 
 									try
 									{
-										var jobId = client.Create(job, new ScheduledState(dt));//Queue
+										var jobId = client.Create(job, new ScheduledState(dt)); //Queue
 										jobLink = new UrlHelper(context).JobDetails(jobId);
 									}
 									catch (Exception e)
 									{
 										errorMessage = e.Message;
 									}
+
 									break;
 								}
 							case "Enqueue":
@@ -239,6 +247,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 									{
 										errorMessage = e.Message;
 									}
+
 									break;
 								}
 						}
@@ -279,7 +288,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 			foreach (var section in taskSections.Keys)
 			{
 				var scrubbedSection = section.ScrubURL();
-				var expanded = taskSections.Keys.First() == section;
+				var expanded = true; // taskSections.Keys.First() == section;
 
 				if (taskSections.Count > 1)
 				{
@@ -298,6 +307,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 			<h1 class=""page-header single-section"">{section}</h1>
 ");
 				}
+
 				WriteLiteral($@"
 			<div id=""section_collapse_{scrubbedSection}"" class=""panel-collapse {(expanded ? "collapse in" : "collapse")}"" aria-expanded=""{(expanded ? "true" : "false")}"" aria-labelledby=""section_heading_{scrubbedSection}"" data-parent=""#jobsAccordion"">
 ");
@@ -372,6 +382,10 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 		{
 			foreach (var job in jobs)
 			{
+				var existingName = Context.Request.GetQuery("definition");
+				var cronJobs = Hangfire.JobStorage.Current.GetConnection().GetRecurringJobs();
+				var recurringJob = cronJobs.FirstOrDefault(c => c.Id == existingName && c.Job.Type == job.Type);
+
 				var id = $"{section}_{job.Name.ScrubURL()}";
 				var expanded = jobs.First() == job;
 
@@ -398,6 +412,8 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 					}
 				}
 
+				var existingJobs = Hangfire.JobStorage.Current.GetConnection().GetRecurringJobs().Where(j => j.Job.Type == job.Type).ToList();
+
 				WriteLiteral($@"
 	<div class=""panel panel-info js-management card"" data-id=""{id}"" style=""{(expanded ? "margin-top:20px" : "")}"">
 		<div id=""heading_{id}"" class=""panel-heading card-header {(expanded ? "" : "collapsed")}collapsed"" role=""button"" data-toggle=""collapse"" data-parent=""#accordion"" href=""#collapse_{id}"" aria-expanded=""{(expanded ? "true" : "false")}"" aria-controls=""collapse_{id}"">
@@ -409,6 +425,15 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 			<div class=""panel-body"" style=""padding-bottom: 0px;"">
 				<p>{job.Description}</p>
 ");
+				WriteLiteral(@"Import existing scheduled job definition: <select name='job_instance' onchange=""window.location.href=window.location.origin+window.location.pathname+'?definition='+this.value"">");
+				WriteLiteral($"<option>[New]</option>");
+				existingJobs.ForEach(x =>
+				{
+					WriteLiteral($@"<option {(existingName == x.Id ? "selected='selected'" : "")} value='{x.Id}'>{x.Id}</option>");
+				});
+				WriteLiteral($@"</select>");
+
+
 				if (showMeta)
 				{
 					WriteLiteral($@"
@@ -420,16 +445,17 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 				</div>
 ");
 				}
+
 				WriteLiteral($@"
 			</div>
 			<div class=""panel-body"" style=""padding-bottom: 0px;"">
 ");
-				JobWriter(id, job);
+				JobWriter(id, job, recurringJob);
 				WriteLiteral($@"
 			</div>
 			<div class=""panel-footer"">
 ");
-				ButtonWriter(id, job);
+				ButtonWriter(id, job, recurringJob);
 				WriteLiteral($@"
 			</div>
 		</div>
@@ -438,9 +464,17 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 			}
 		}
 
-		protected void JobWriter(string id, JobMetadata job)
+		protected void JobWriter(string id, JobMetadata job, RecurringJobDto recurringJob = null)
 		{
 			string inputs = string.Empty;
+			var values = recurringJob?.Job.Args;
+			var arguments = job.MethodInfo.GetParameters().Select(z => z.Name);
+			var existingVals = new Dictionary<string, object>();
+			if (values != null && values.Count == arguments.Count())
+				for (int i = 0; i < arguments.Count(); i++)
+				{
+					existingVals.Add(arguments.ElementAt(i), values[i]);
+				}
 
 			foreach (var parameterInfo in job.MethodInfo.GetParameters())
 			{
@@ -462,26 +496,27 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 				var labelText = displayInfo?.Label ?? parameterInfo.Name;
 				var placeholderText = displayInfo?.Placeholder ?? parameterInfo.Name;
 				var myId = $"{id}_{parameterInfo.Name}";
+				object defaultValue = (existingVals.ContainsKey(parameterInfo.Name)) ? existingVals[parameterInfo.Name] : displayInfo.DefaultValue;
 
 				if (parameterInfo.ParameterType == typeof(string))
 				{
-					inputs += InputTextbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, displayInfo.DefaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
+					inputs += InputTextbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, defaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
 				}
 				else if (parameterInfo.ParameterType == typeof(int))
 				{
-					inputs += InputNumberbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, displayInfo.DefaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
+					inputs += InputNumberbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, defaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
 				}
 				else if (parameterInfo.ParameterType == typeof(Uri))
 				{
-					inputs += Input(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, "url", displayInfo.DefaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
+					inputs += Input(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, "url", defaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
 				}
 				else if (parameterInfo.ParameterType == typeof(DateTime))
 				{
-					inputs += InputDatebox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, displayInfo.DefaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
+					inputs += InputDatebox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, defaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
 				}
 				else if (parameterInfo.ParameterType == typeof(bool))
 				{
-					inputs += "<br/>" + InputCheckbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, displayInfo.DefaultValue, displayInfo.IsDisabled);
+					inputs += "<br/>" + InputCheckbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, defaultValue, displayInfo.IsDisabled);
 				}
 				else if (parameterInfo.ParameterType.IsEnum)
 				{
@@ -490,11 +525,12 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 					{
 						data.Add(Enum.GetName(parameterInfo.ParameterType, v), v.ToString());
 					}
-					inputs += InputDataList(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, data, displayInfo.DefaultValue?.ToString(), displayInfo.IsDisabled);
+
+					inputs += InputDataList(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, data, defaultValue?.ToString(), displayInfo.IsDisabled);
 				}
 				else
 				{
-					inputs += InputTextbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, displayInfo.DefaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
+					inputs += InputTextbox(myId, displayInfo.CssClasses, labelText, placeholderText, displayInfo.Description, defaultValue, displayInfo.IsDisabled, displayInfo.IsRequired);
 				}
 			}
 
@@ -512,7 +548,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 ");
 		}
 
-		protected void ButtonWriter(string id, JobMetadata job)
+		protected void ButtonWriter(string id, JobMetadata job, RecurringJobDto recurringJob)
 		{
 			var url = $"{ManagementPage.UrlRoute}/{job.JobId.ScrubURL()}";
 			var loadingText = "Queuing";
@@ -565,7 +601,8 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 						</button>
 						<ul class=""dropdown-menu dropdown-menu-right"">
 ");
-			var timeSpanItems = new Dictionary<string, string>() {
+			var timeSpanItems = new Dictionary<string, string>()
+			{
 				{ "5 seconds", "0:0:5" },
 				{ "10 seconds", "0:0:10" },
 				{ "15 seconds", "0:0:15" },
@@ -588,7 +625,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 				</div>
 				<div class=""commands-options CronExpression col-xs-12 col-sm-5"" style=""display:none;"">
 					<div class='input-group' id='{id}_cronbuilder'>
-						<input type=""text"" class=""form-control"" title=""Enter a cron expression or use the builder by clicking on the wrench"" placeholder=""* * * * *"" id=""{id}_sys_cron"">
+						<input type=""text"" class=""form-control"" title=""Enter a cron expression or use the builder by clicking on the wrench"" placeholder=""* * * * *"" value=""{recurringJob?.Cron ?? "* * * * *"}"" id=""{id}_sys_cron"">
 						<span class=""input-group-addon btn btn-default js-management-input-CronModal"" title=""Cron Expression Builder"" input-id=""{id}"">
 							<span class=""glyphicon glyphicon-wrench""></span>
 						</span>
@@ -599,11 +636,12 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 				WriteLiteral($@"
 				<div class=""commands-options CronExpression col-xs-12 col-sm-4"" style=""display:none;"">
 							   <div class=""input-group"" id=""{id}_Name"">
-						<input type=""text"" class=""form-control"" title="""" placeholder=""Job Name"" id=""{id}_sys_name"" data-original-title=""Give a unique name to your job"" spellcheck=""false"" data-ms-editor=""true"">
+						<input type=""text"" class=""form-control"" title="""" placeholder=""Job Name"" id=""{id}_sys_name"" data-original-title=""Give a unique name to your job"" spellcheck=""false"" data-ms-editor=""true"" value=""{recurringJob?.Id}"">
 					</div>
 				</div>
 ");
 			}
+
 			WriteLiteral($@"
 				<div class=""commands-panel CronExpression col-xs-12 col-sm-4"" style=""display:none;"">
 					<div class=""btn-group"">
@@ -617,14 +655,15 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 						</button>
 						<ul class=""dropdown-menu dropdown-menu-right"">
 ");
-			var cronItems = new Dictionary<string, string>() {
-							{ "Every Minute", Cron.Minutely() },
-							{ "Hourly", Cron.Hourly() },
-							{ "Daily", Cron.Daily() },
-							{ "Weekly", Cron.Weekly() },
-							{ "Monthly", Cron.Monthly() },
-							{ "Annually", Cron.Yearly() }
-						};
+			var cronItems = new Dictionary<string, string>()
+			{
+				{ "Every Minute", Cron.Minutely() },
+				{ "Hourly", Cron.Hourly() },
+				{ "Daily", Cron.Daily() },
+				{ "Weekly", Cron.Weekly() },
+				{ "Monthly", Cron.Monthly() },
+				{ "Annually", Cron.Yearly() }
+			};
 			foreach (var o in cronItems)
 			{
 				WriteLiteral($@"
@@ -636,6 +675,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 								</li>
 			");
 			}
+
 			WriteLiteral($@"
 						</ul>
 					</div>
@@ -643,7 +683,8 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 ");
 		}
 
-		protected string Input(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, string inputtype, object defaultValue = null, bool isDisabled = false, bool isRequired = false)
+		protected string Input(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, string inputtype, object defaultValue = null, bool isDisabled = false,
+			bool isRequired = false)
 		{
 			return $@"
 <div class=""form-group {cssClasses} {(isRequired ? "required" : "")}"">
@@ -657,17 +698,20 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 	</div>";
 		}
 
-		protected string InputTextbox(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, object defaultValue = null, bool isDisabled = false, bool isRequired = false)
+		protected string InputTextbox(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, object defaultValue = null, bool isDisabled = false,
+			bool isRequired = false)
 		{
 			return Input(id, cssClasses, labelText, placeholderText, descriptionText, "text", defaultValue, isDisabled, isRequired);
 		}
 
-		protected string InputNumberbox(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, object defaultValue = null, bool isDisabled = false, bool isRequired = false)
+		protected string InputNumberbox(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, object defaultValue = null, bool isDisabled = false,
+			bool isRequired = false)
 		{
 			return Input(id, cssClasses, labelText, placeholderText, descriptionText, "number", defaultValue, isDisabled, isRequired);
 		}
 
-		protected string InputDatebox(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, object defaultValue = null, bool isDisabled = false, bool isRequired = false)
+		protected string InputDatebox(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, object defaultValue = null, bool isDisabled = false,
+			bool isRequired = false)
 		{
 			return $@"
 <div class=""form-group {cssClasses} {(isRequired ? "required" : "")}"">
@@ -700,7 +744,8 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 </div>";
 		}
 
-		protected string InputDataList(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, Dictionary<string, string> data, string defaultValue = null, bool isDisabled = false)
+		protected string InputDataList(string id, string cssClasses, string labelText, string placeholderText, string descriptionText, Dictionary<string, string> data, string defaultValue = null,
+			bool isDisabled = false)
 		{
 			var initText = (defaultValue != null ? defaultValue : (!string.IsNullOrWhiteSpace(placeholderText) ? placeholderText : "Select a value"));
 			var initValue = (defaultValue != null && data.ContainsKey(defaultValue)) ? data[defaultValue].ToString() : "";

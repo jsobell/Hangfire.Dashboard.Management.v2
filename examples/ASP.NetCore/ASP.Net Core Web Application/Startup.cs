@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-
+using ASP.Net_Core_Web_Application.HangfireManagement;
 using Hangfire;
 using Hangfire.Dashboard.Management.v2;
 using Hangfire.Dashboard.Management.v2.Support;
@@ -77,6 +77,10 @@ namespace ASP.Net_Core_Web_Application
 				DashboardTitle = "ASP.Net Core Hangfire Management",
 				StatsPollingInterval = 5000
 			});
+
+			RecurringJob.AddOrUpdate<Expedited>(z => z.Job1(null, new JobCancellationToken(false), "InputValuie1","InputValue2", DateTime.Now.AddDays(11), true, Expedited.TestEnum.Test3), "1 2 3 4 5");
+
+
 		}
 	}
 }
