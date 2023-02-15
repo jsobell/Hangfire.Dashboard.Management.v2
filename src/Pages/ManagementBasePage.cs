@@ -556,7 +556,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 			WriteLiteral($@"
 				<div class=""btn-group col-xs-12 col-sm-3"">
 					<button class=""btn btn-default dropdown-toggle"" type=""button"" id=""dropdownMenu1"" data-toggle=""dropdown"" aria-haspopup=""true"" aria-expanded=""false"">
-						Task type: <span class=""{id} commandsType"">Immediate</span>
+						Task type: <span class=""{id} commandsType"">{(recurringJob!=null ? "Repeating" : "Immediate")}</span>
 						<span class=""caret""></span>
 					</button>
 					<ul class=""dropdown-menu"" aria-labelledby=""dropdownMenu1"">
@@ -623,7 +623,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 						</ul>
 					</div>
 				</div>
-				<div class=""commands-options CronExpression col-xs-12 col-sm-5"" style=""display:none;"">
+				<div class=""commands-options CronExpression col-xs-12 col-sm-5"" {(recurringJob!=null ? "" : "style=\"display:none;\"")}>
 					<div class='input-group' id='{id}_cronbuilder'>
 						<input type=""text"" class=""form-control"" title=""Enter a cron expression or use the builder by clicking on the wrench"" placeholder=""* * * * *"" value=""{recurringJob?.Cron ?? "* * * * *"}"" id=""{id}_sys_cron"">
 						<span class=""input-group-addon btn btn-default js-management-input-CronModal"" title=""Cron Expression Builder"" input-id=""{id}"">
@@ -634,7 +634,7 @@ namespace Hangfire.Dashboard.Management.v2.Pages
 			if (job.AllowMultiple)
 			{
 				WriteLiteral($@"
-				<div class=""commands-options CronExpression col-xs-12 col-sm-4"" style=""display:none;"">
+				<div class=""commands-options CronExpression col-xs-12 col-sm-4"" {(recurringJob!=null ? "" : "style=\"display:none;\"")}>
 							   <div class=""input-group"" id=""{id}_Name"">
 						<input type=""text"" class=""form-control"" title="""" placeholder=""Job Name"" id=""{id}_sys_name"" data-original-title=""Give a unique name to your job"" spellcheck=""false"" data-ms-editor=""true"" value=""{recurringJob?.Id}"">
 					</div>
